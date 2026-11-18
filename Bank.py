@@ -337,7 +337,6 @@ async def start_web_server():
 
 class BankBot(discord.Client):
     async def setup_hook(self):
-        await start_web_server()
         for name, (_, base) in RESOURCES.items():
             db.execute("INSERT OR IGNORE INTO prices VALUES(?,?)", (name, base))
         db.commit()
@@ -788,7 +787,7 @@ COMMANDS = {
 
 @bot.event
 async def on_ready():
-    print(f"✅ شغال باسم {bot.user}")
+    print(f"✅ شغال باسم {bot.user}", flush=True)
 
 
 @bot.event
@@ -808,5 +807,14 @@ async def on_message(msg: discord.Message):
         await msg.reply("❌ صار خطأ غير متوقع.", mention_author=False)
 
 
+async def main():
+    await start_web_server()  # يفتح البورت أول شي حتى لو تأخر تسجيل دخول البوت
+    print("🌐 السيرفر اشتغل، جاري تسجيل دخول البوت...", flush=True)
+    async with bot:
+        await bot.start(TOKEN)
+
+
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    import asyncio
+
+    asyncio.run(main())

@@ -324,8 +324,20 @@ intents = discord.Intents.default()
 intents.message_content = True  # لازم تفعله من بوابة المطورين
 
 
+async def start_web_server():
+    # سيرفر صغير عشان Render يشوف بورت مفتوح (للخدمات من نوع Web Service)
+    from aiohttp import web
+
+    app = web.Application()
+    app.router.add_get("/", lambda request: web.Response(text="Bot is running"))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", "10000"))).start()
+
+
 class BankBot(discord.Client):
     async def setup_hook(self):
+        await start_web_server()
         for name, (_, base) in RESOURCES.items():
             db.execute("INSERT OR IGNORE INTO prices VALUES(?,?)", (name, base))
         db.commit()

@@ -1,3 +1,4 @@
+// © 2026 Q3yb - Wick studio.
 require('dotenv').config();
 const http = require('http');
 const { Client, GatewayIntentBits, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
@@ -108,6 +109,7 @@ client.on('clientReady', () => {
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
+  console.log(`[recv] ${message.author.tag}: ${message.content.slice(0, 40)}`);
 
   const parts = message.content.trim().split(/ +/);
   const commandName = parts.shift()?.toLowerCase();
@@ -131,9 +133,16 @@ client.on('messageCreate', async (message) => {
     } catch (e) { return message.reply(`❌ فشل الاسترجاع: ${e.message}`); }
   }
 
+  // ---- فحص: يرد على ping بدون المرور على البنك ----
+  if (commandName === 'ping') {
+    return message.reply(`pong ✅ | channel: ${message.channel.id} | guild: ${message.guild?.id}`);
+  }
+
   if (typeof handleBankCommand === 'function' && commandName) {
-    try { await handleBankCommand(message, commandName, args); }
-    catch (error) { console.error('[Bank Command Error]:', error); }
+    try {
+      const handled = await handleBankCommand(message, commandName, args);
+      console.log(`[msg] ch=${message.channel.id} "${commandName}" handled=${handled}`);
+    } catch (error) { console.error('[Bank Command Error]:', error); }
   }
 });
 

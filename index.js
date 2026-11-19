@@ -1,128 +1,102 @@
-// © 2026 Q3yb - Wick studio.
-// Protecting innovation, enabling creation. All rights reserved.
-// Unauthorized access, reproduction, or distribution is strictly forbidden.
-// This software is provided for private, individual use only.
-// --------------------------------------------
-
 require('dotenv').config();
-const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-const mongoose = require('mongoose');
+const http = require('http');
+const axios = require('axios');
+const {
+  Client, GatewayIntentBits, REST, Routes,
+  SlashCommandBuilder, AttachmentBuilder, MessageFlags,
+} = require('discord.js');
+const db = require('./db');
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
-  ]
-});
+const OWNER_ID = process.env.OWNER_ID;
+const DAILY_AMOUNT = 500;
+const DAILY_COOLDOWN = 24 * 60 * 60 * 1000;
 
-let handleBankCommand = async () => false;
-let handleBankInteraction = async () => {};
+// Render يحتاج بورت مفتوح
+http.createServer((_, res) => res.end('ok')).listen(process.env.PORT || 3000);
 
-try {
-  const bankPath = path.join(__dirname, 'bank', 'index.js');
-  if (fs.existsSync(bankPath)) {
-    const bankSystem = require('./bank/index.js');
-
-    if (typeof bankSystem.handleBankCommand === 'function') {
-      handleBankCommand = bankSystem.handleBankCommand;
-      console.log('✅ handleBankCommand loaded successfully');
-    } else {
-      console.warn('⚠️ handleBankCommand is not a function in bank system');
-    }
-
-    if (typeof bankSystem.handleBankInteraction === 'function') {
-      handleBankInteraction = bankSystem.handleBankInteraction;
-      console.log('✅ handleBankInteraction loaded successfully');
-    } else {
-      console.warn('⚠️ handleBankInteraction is not a function in bank system');
-    }
-
-    if (bankSystem.bankCommands) {
-      client.bankCommands = bankSystem.bankCommands;
-      console.log('✅ client.bankCommands loaded successfully');
-    } else {
-      console.warn('⚠️ bankSystem.bankCommands not found or is empty');
-    }
-
-    console.log('✅ Bank system loaded successfully');
-  }
-} catch (error) {
-  console.error('❌ Failed to load Bank System:', error);
-}
-
-const readAdminSettings = () => {
-  try {
-    const filePath = path.join(__dirname, 'admin_settings.json');
-    if (!fs.existsSync(filePath)) return { adminRoles: [], eventRoles: [] };
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch (err) {
-    return { adminRoles: [], eventRoles: [] };
-  }
+const getBal = (id) => db.get('users', {})[id] ?? 0;
+const setBal = (id, v) => {
+  const u = db.get('users', {});
+  u[id] = v;
+  db.set('users', u);
 };
 
-const hasAdminPermission = (member) => {
-  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
-  const adminSettings = readAdminSettings();
-  if (!adminSettings.adminRoles) return false;
-  return member.roles.cache.some(role =>
-    adminSettings.adminRoles.map(String).includes(role.id)
-  );
-};
+const commands = [
+  new SlashCommandBuilder().setName('balance').setDescription('عرض الرصيد')
+    .addUserOption(o => o.setName('user').setDescription('العضو')),
+  new SlashCommandBuilder().setName('daily').setDescription('استلام الراتب اليومي'),
+  new SlashCommandBuilder().setName('transfer').setDescription('تحويل فلوس')
+    .addUserOption(o => o.setName('user').setDescription('المستلم').setRequired(true))
+    .addIntegerOption(o => o.setName('amount').setDescription('المبلغ').setMinValue(1).setRequired(true)),
+  new SlashCommandBuilder().setName('backup').setDescription('نسخة كاملة من البيانات (للمالك)'),
+  new SlashCommandBuilder().setName('restore').setDescription('استرجاع نسخة (للمالك)')
+    .addAttachmentOption(o => o.setName('file').setDescription('ملف data.json').setRequired(true)),
+].map(c => c.toJSON());
 
-const hasEventPermission = (member) => {
-  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
-  const adminSettings = readAdminSettings();
-  if (!adminSettings.eventRoles) return false;
-  return member.roles.cache.some(role =>
-    adminSettings.eventRoles.map(String).includes(role.id)
-  );
-};
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-(async () => {
+client.once('clientReady', async () => {
+  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+  await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+  console.log(`✅ ${client.user.tag} جاهز`);
+});
+
+client.on('interactionCreate', async (i) => {
+  if (!i.isChatInputCommand()) return;
+  const eph = { flags: MessageFlags.Ephemeral };
+
   try {
-    await mongoose.connect(process.env.MONGODB);
-    console.log('\x1b[32m✅ Connected to MongoDB\x1b[0m');
-
-    await client.login(process.env.TOKEN);
-    console.log('\x1b[32m✅ Bot logged in successfully\x1b[0m');
-  } catch (error) {
-    console.error('❌ Startup error:', error);
-  }
-})();
-
-client.on('ready', () => {
-  console.log(`${client.user.username} is Online`);
-  client.user.setActivity('Wick Studio', { type: 0 });
-});
-
-client.on('messageCreate', async message => {
-  if (message.author.bot) return;
-
-  const parts = message.content.trim().split(/ +/);
-  const commandName = parts.shift()?.toLowerCase();
-  const args = parts;
-
-  if (typeof handleBankCommand === 'function' && commandName) {
-    try {
-      await handleBankCommand(message, commandName, args);
-    } catch (error) {
-      console.error('[Bank Command Error]:', error);
+    if (i.commandName === 'balance') {
+      const u = i.options.getUser('user') || i.user;
+      return i.reply(`💰 رصيد ${u}: **${getBal(u.id).toLocaleString()}**`);
     }
-  }
-});
 
-client.on('interactionCreate', async interaction => {
-  try {
-    if (typeof handleBankInteraction === 'function') {
-      await handleBankInteraction(interaction);
+    if (i.commandName === 'daily') {
+      const last = db.get('daily', {});
+      const left = (last[i.user.id] ?? 0) + DAILY_COOLDOWN - Date.now();
+      if (left > 0) {
+        const h = Math.floor(left / 3600000), m = Math.floor((left % 3600000) / 60000);
+        return i.reply({ content: `⏳ ارجع بعد ${h} ساعة و ${m} دقيقة`, ...eph });
+      }
+      last[i.user.id] = Date.now();
+      db.set('daily', last);
+      setBal(i.user.id, getBal(i.user.id) + DAILY_AMOUNT);
+      return i.reply(`✅ استلمت **${DAILY_AMOUNT}**، رصيدك الحين **${getBal(i.user.id).toLocaleString()}**`);
     }
-  } catch (error) {
-    console.error('[Bank Interaction Error]:', error);
+
+    if (i.commandName === 'transfer') {
+      const to = i.options.getUser('user');
+      const amount = i.options.getInteger('amount');
+      if (to.bot || to.id === i.user.id) return i.reply({ content: '❌ مستلم غير صالح', ...eph });
+      if (getBal(i.user.id) < amount) return i.reply({ content: '❌ رصيدك ما يكفي', ...eph });
+      setBal(i.user.id, getBal(i.user.id) - amount);
+      setBal(to.id, getBal(to.id) + amount);
+      return i.reply(`✅ ${i.user} حوّل **${amount.toLocaleString()}** إلى ${to}`);
+    }
+
+    if (i.commandName === 'backup') {
+      if (i.user.id !== OWNER_ID) return i.reply({ content: '❌ ما عندك صلاحية', ...eph });
+      const file = new AttachmentBuilder(
+        Buffer.from(JSON.stringify(db.all(), null, 2)),
+        { name: 'data.json' },
+      );
+      return i.reply({ files: [file], ...eph });
+    }
+
+    if (i.commandName === 'restore') {
+      if (i.user.id !== OWNER_ID) return i.reply({ content: '❌ ما عندك صلاحية', ...eph });
+      await i.deferReply(eph);
+      const att = i.options.getAttachment('file');
+      const res = await axios.get(att.url, { responseType: 'json' });
+      const obj = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      db.replace(obj);
+      return i.editReply('✅ تم استرجاع النسخة');
+    }
+  } catch (e) {
+    console.error(e);
+    const msg = { content: '❌ صار خطأ', ...eph };
+    i.deferred || i.replied ? i.editReply(msg.content) : i.reply(msg);
   }
 });
 
-module.exports = { client, hasAdminPermission, hasEventPermission, readAdminSettings };
+client.login(process.env.TOKEN);

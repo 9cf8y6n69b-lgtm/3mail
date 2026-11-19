@@ -56,14 +56,16 @@ async function handleBankCommand(message, commandName, args) {
 
     const config = readBankConfigSafe();
     const adminSettings = config?.adminSettings || {};
-    const bankChannels = Array.isArray(adminSettings.bankChannels) ? adminSettings.bankChannels : [];
+    // نتجاهل العناصر الفاضية ("") عشان ما تقيّد البنك بالغلط
+    const bankChannels = Array.isArray(adminSettings.bankChannels)
+        ? adminSettings.bankChannels.map(String).filter(id => id.trim() !== '')
+        : [];
 
     if (Array.isArray(adminSettings.blacklistedUsers) && adminSettings.blacklistedUsers.includes(message.author.id)) {
         try { await message.reply('❌ | أنت ممنوع من استخدام أوامر البنك!'); } catch {}
         return true;
     }
     if (bankChannels.length > 0 && !bankChannels.includes(message.channel.id)) {
-        try { await message.reply(''); } catch {}
         return false;
     }
 

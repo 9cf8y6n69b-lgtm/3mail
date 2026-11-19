@@ -142,6 +142,12 @@ client.on('messageCreate', async (message) => {
     try {
       const handled = await handleBankCommand(message, commandName, args);
       console.log(`[msg] ch=${message.channel.id} "${commandName}" handled=${handled}`);
+      if (!handled) {
+        let chans = 'n/a';
+        try { chans = JSON.stringify(JSON.parse(fs.readFileSync(path.join(__dirname, 'bank/config/bank-config.json'), 'utf8')).adminSettings?.bankChannels); } catch (e) { chans = 'ERR ' + e.message; }
+        const keys = client.bankCommands ? [...client.bankCommands.keys()] : [];
+        console.log(`[debug] bankChannels=${chans} | has=${keys.includes(commandName)} | total=${keys.length} | sample=${JSON.stringify(keys.slice(0, 12))}`);
+      }
     } catch (error) { console.error('[Bank Command Error]:', error); }
   }
 });

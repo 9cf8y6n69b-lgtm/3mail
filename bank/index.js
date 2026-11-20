@@ -73,8 +73,16 @@ async function handleBankCommand(message, commandName, args) {
     const command = bankCommands.get(commandName);
     if (!command) return false;
 
+    // حساب مجمّد
+    try {
+        const BankUser = require('./models/BankUser');
+        const rec = await BankUser.findOne({ userId: message.author.id, guildId: message.guild.id });
+        if (rec?.frozen) { await message.reply('❄️ حسابك مجمّد من الإدارة.').catch(() => {}); return true; }
+    } catch {}
+
     try {
         await command.execute(message, args);
+        if (command.name === 'ادارة' || command.name === 'اعداد') { try { require('./utils/backup').requestBackup(message.client, 'أمر إدارة'); } catch {} }
         return true;
     } catch (err) {
         console.error(`Error executing bank command '${commandName}':`, err);

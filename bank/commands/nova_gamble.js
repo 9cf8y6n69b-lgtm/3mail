@@ -5,7 +5,7 @@ const { createGambleCard } = require('../utils/gameCards');
 const { randomXp } = require('../utils/rewards');
 const { readBet, sleep, pick } = require('../utils/bet');
 
-const FRUITS = ['🍎', '🍊', '🍋', '🍇', '🍒', '🍉', '🍓', '🍌'];
+const FRUITS = ['cherry', 'grapes', 'apple', 'orange', 'tomato', 'lemon', 'diamond'];
 const file = (b) => new AttachmentBuilder(b, { name: 'gamble.png' });
 
 module.exports = {
@@ -42,18 +42,18 @@ module.exports = {
       await setCooldown(user, 'gamble');
       await user.save();
 
-      const text = `✨ كسبت ${xp} نقطة خبرة` + (leveledUp ? `\n🎉 وصلت للمستوى ${user.level}` : '');
+      const text = `${state === 'win' ? '🏆 فزت' : state === 'lose' ? '❌ خسرت' : '🤝 تعادل'} ${formatMoney(Math.abs(change))} — رصيدك ${formatMoney(user.balance)}\n✨ كسبت ${xp} نقطة خبرة` + (leveledUp ? `\n🎉 وصلت للمستوى ${user.level}` : '');
+      const rnd = () => [pick(FRUITS), pick(FRUITS), pick(FRUITS)];
       const mk = (f, s) => createGambleCard({ discordUser: message.author, fruits: f, state: s, amount, change, guild: message.guild });
       let sent;
       try {
-        sent = await message.reply({ files: [file(await mk([pick(FRUITS), pick(FRUITS), pick(FRUITS)], 'spin'))] });
-        for (let i = 0; i < 2; i++) { await sleep(900); await sent.edit({ attachments: [], files: [file(await mk([pick(FRUITS), pick(FRUITS), pick(FRUITS)], 'spin'))] }); }
+        sent = await message.reply({ files: [file(await mk(rnd(), 'spin'))] });
+        for (let i = 0; i < 2; i++) { await sleep(900); await sent.edit({ attachments: [], files: [file(await mk(rnd(), 'spin'))] }); }
         await sleep(900);
         await sent.edit({ content: text, attachments: [], files: [file(await mk(fruits, state))] });
       } catch (e) {
-        console.error('gamble card failed:', e.message);
-        const t = `${fruits.join(' ')}\n${state === 'win' ? 'فزت' : state === 'lose' ? 'خسرت' : 'تعادل'} ${formatMoney(Math.abs(change))}\n${text}`;
-        return sent ? sent.edit({ content: t, attachments: [], files: [] }).catch(() => {}) : message.reply(t);
+        console.error('gamble card failed:', e);
+        return sent ? sent.edit({ content: text, attachments: [], files: [] }).catch(() => {}) : message.reply(text);
       }
     } catch (e) {
       console.error('Error in gamble command:', e);

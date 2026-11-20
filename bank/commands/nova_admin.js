@@ -75,7 +75,7 @@ module.exports = {
       }
       if (sub === 'راتب') {
         const job = args[1]; const v = num(args[2]);
-        if (!job || v === null) return message.reply('❌ مثال: `ادارة راتب Unemployed 5000`');
+        if (!job || v === null) return message.reply('❌ مثال: `ادارة راتب عاطل 5000`');
         if (!cfg.economy.jobs?.[job]) return message.reply(`❌ وظيفة غير موجودة. الموجود: ${Object.keys(cfg.economy.jobs || {}).join(' ، ')}`);
         cfg.economy.jobs[job].salary = v; save(cfg);
         return message.reply(`✅ راتب **${job}** صار ${formatMoney(v)}`);

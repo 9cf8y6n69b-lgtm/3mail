@@ -21,7 +21,7 @@ module.exports = {
       const user = await getUser(message.author.id, message.guild.id);
       const cd = checkCooldown(user, 'roulette');
       if (!cd.ready) return message.reply(`⏰ يجب الانتظار ${cd.remainingFormatted} للروليت مرة أخرى.`);
-      const bet = readBet(args[0], user);
+      const bet = readBet(args[0] || '1000', user);
       if (bet.error) return message.reply(bet.error);
       const amount = bet.amount;
 

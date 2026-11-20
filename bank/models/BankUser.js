@@ -12,6 +12,7 @@ const defaults = () => ({
   lands: [], cars: [], tickets: [],
   loan: { amount: 0, takenAt: null },
   marriage: { partnerId: null, marriedAt: null },
+  frozen: false,
   protection: { active: false, expiresAt: null },
   stats: { highestEarned: 0, highestLost: 0, totalStolen: 0, totalRobbed: 0, totalInvested: 0, highestStolen: 0 },
   investment: { principal: 0, profit: 0, totalInvested: 0, highestWin: 0, lastTick: null },
@@ -83,7 +84,8 @@ function flush() {
     fs.renameSync(tmp, FILE);
   } catch (e) { console.error('[BankUser] save failed:', e.message); }
 }
-const scheduleSave = () => { if (!timer) timer = setTimeout(flush, 1000); };
+let onChangeHook = null;
+const scheduleSave = () => { if (onChangeHook) { try { onChangeHook(); } catch {} } if (!timer) timer = setTimeout(flush, 1000); };
 process.on('SIGTERM', () => { flush(); process.exit(0); });
 process.on('SIGINT', () => { flush(); process.exit(0); });
 load();
@@ -271,5 +273,6 @@ BankUser.__dump = () => JSON.parse(JSON.stringify(users));
 BankUser.__load = (arr) => { users = arr.map((u) => normalize(reviveDates(u))); rebuild(); flush(); return users.length; };
 BankUser.__count = () => users.length;
 BankUser.__flush = flush;
+BankUser.__setOnChange = (fn) => { onChangeHook = fn; };
 
 module.exports = BankUser;

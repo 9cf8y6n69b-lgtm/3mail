@@ -1,80 +1,55 @@
 // © 2026 Q3yb - Wick studio.
-// Protecting innovation, enabling creation. All rights reserved.
-// Unauthorized access, reproduction, or distribution is strictly forbidden.
-// This software is provided for private, individual use only.
-// --------------------------------------------
+const { AttachmentBuilder } = require('discord.js');
+const { getUser, checkCooldown, setCooldown, parseAmount, formatMoney, readConfig, checkLevelUpAndJob } = require('../utils/helpers');
+const { createTradeGif } = require('../utils/tradeGif');
+const { randomXp } = require('../utils/rewards');
 
-const { EmbedBuilder } = require('discord.js');
-const { getUser, checkCooldown, setCooldown, parseAmount, formatMoney } = require('../utils/helpers');
-const config = require('../config/bank-config.json');
+const MIN_TRADE = 1000;
+const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+
 module.exports = {
   name: 'تداول',
-  aliases: ['trade', 'invest'],
+  aliases: ['trade', 'اسهم'],
+  description: 'تداول الأسهم (ربع / نص / كامل / مبلغ) وشوف الشارت يتحرك',
   category: 'bank',
+
   execute: async (message, args) => {
     try {
-      if (args.length === 0) {
-        return message.reply('❌ الاستخدام: `تداول <المبلغ>` أو `تداول كامل/نص/ربع`');
-      }
+      const config = readConfig();
+      if (!config || !config.economy) return message.reply('❌ تعذر تحميل إعدادات البنك.');
+      if (!args[0]) return message.reply('❌ الاستخدام: `تداول <ربع | نص | كامل | المبلغ>`');
       const user = await getUser(message.author.id, message.guild.id);
-      const cooldown = checkCooldown(user, 'trade');
-      if (!cooldown.ready) {
-        const embed = new EmbedBuilder()
-          .setColor('#FF0000')
-          .setDescription(`⏰ يجب الانتظار ${cooldown.remainingFormatted} للتداول مرة أخرى.`);
-        return message.reply({ embeds: [embed] });
-      }
+      const cd = checkCooldown(user, 'trade');
+      if (!cd.ready) return message.reply(`⏰ يجب الانتظار ${cd.remainingFormatted} للتداول مرة أخرى.`);
+
       const amount = parseAmount(args[0], user.balance);
-      if (!amount || amount <= 0) {
-        return message.reply('❌ المبلغ غير صالح!');
-      }
-      if (amount < config.games.trade.minBet) {
-        return message.reply(`❌ الحد الأدنى للتداول هو ${formatMoney(config.games.trade.minBet)}`);
-      }
-      if (amount > user.balance) {
-        return message.reply(`❌ ليس لديك رصيد كافٍ! رصيدك: ${formatMoney(user.balance)}`);
-      }
-      const percentages = config.games.trade.percentages;
-      const percentage = percentages[Math.floor(Math.random() * percentages.length)];
-      const change = Math.floor(amount * (percentage / 100));
-      const newAmount = amount + change;
-      user.balance = user.balance - amount + newAmount;
-      user.stats.totalInvested += amount;
-      if (change > 0 && change > user.stats.highestEarned) {
-        user.stats.highestEarned = change;
-      } else if (change < 0 && Math.abs(change) > user.stats.highestLost) {
-        user.stats.highestLost = Math.abs(change);
-      }
+      if (!amount || amount <= 0) return message.reply('❌ المبلغ غير صالح!');
+      if (amount < MIN_TRADE) return message.reply(`❌ الحد الأدنى للتداول ${formatMoney(MIN_TRADE)}`);
+      if (amount > user.balance) return message.reply(`❌ رصيدك ما يكفي! رصيدك: ${formatMoney(user.balance)}`);
+
+      const winRate = Number.isFinite(config.adminSettings?.winRate) ? config.adminSettings.winRate : 0.5;
+      const up = Math.random() < winRate;
+      const pct = up ? rand(8, 75) : rand(8, 65);
+      const change = Math.round(amount * pct / 100) * (up ? 1 : -1);
+
+      user.balance += change;
+      if (up && change > user.stats.highestEarned) user.stats.highestEarned = change;
+      if (!up && -change > user.stats.highestLost) user.stats.highestLost = -change;
+      const xp = randomXp(config, 'trade');
+      user.experience += xp;
+      const leveledUp = await checkLevelUpAndJob(user, config);
       await setCooldown(user, 'trade');
-      let color, emoji, title;
-      if (percentage > 0) {
-        color = '#00FF00';
-        emoji = '📈';
-        title = 'ربح!';
-      } else if (percentage < 0) {
-        color = '#FF0000';
-        emoji = '📉';
-        title = 'خسارة!';
-      } else {
-        color = '#FFA500';
-        emoji = '➡️';
-        title = 'لا تغيير';
-      }
-      const embed = new EmbedBuilder()
-        .setColor(color)
-        .setTitle(`${emoji} تداول - ${title}`)
-        .setDescription(`المبلغ المستثمر: ${formatMoney(amount)}`)
-        .addFields(
-          { name: 'نسبة التغيير', value: `${percentage > 0 ? '+' : ''}${percentage}%`, inline: true },
-          { name: 'الربح/الخسارة', value: formatMoney(change), inline: true },
-          { name: 'المبلغ النهائي', value: formatMoney(newAmount), inline: true },
-          { name: 'رصيدك الجديد', value: formatMoney(user.balance), inline: false }
-        )
-        .setTimestamp();
-      await message.reply({ embeds: [embed] });
-    } catch (error) {
-      console.error('Error in trade command:', error);
-      await message.reply('❌ حدث خطأ أثناء التداول.');
+      await user.save();
+
+      let gif = null;
+      try { gif = await createTradeGif({ discordUser: message.author, up, pct, amount, change }); }
+      catch (e) { console.error('trade gif failed:', e); }
+
+      const text = `${up ? '📈 صفقة رابحة' : '📉 صفقة خاسرة'}: **${change >= 0 ? '+' : '-'}${formatMoney(Math.abs(change))}** — رصيدك ${formatMoney(user.balance)}\n✨ كسبت ${xp} نقطة خبرة` + (leveledUp ? `\n🎉 وصلت للمستوى ${user.level}` : '');
+      return message.reply(gif ? { content: text, files: [new AttachmentBuilder(gif, { name: 'trade.gif' })] } : text);
+    } catch (e) {
+      console.error('Error in trade command:', e);
+      await message.reply(`❌ حدث خطأ في التداول.\n\`${String(e.message).slice(0, 150)}\``);
     }
-  }
+  },
 };

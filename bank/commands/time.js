@@ -1,53 +1,41 @@
 // © 2026 Q3yb - Wick studio.
-// Protecting innovation, enabling creation. All rights reserved.
-// Unauthorized access, reproduction, or distribution is strictly forbidden.
-// This software is provided for private, individual use only.
-// --------------------------------------------
-
 const { EmbedBuilder } = require('discord.js');
-const { getUser, checkCooldown, formatTime } = require('../utils/helpers');
-const config = require('../config/bank-config.json');
+const { getUser, checkCooldown, formatTime, readConfig } = require('../utils/helpers');
+
+const NAMES = {
+  salary: 'راتب', tip: 'بخشيش', luck: 'حظ', dice: 'نرد', fruits: 'فواكه', gamble: 'قمار',
+  trade: 'تداول', rob: 'نهب / سرقة', loan: 'قرض', invest: 'استثمار', roulette: 'روليت',
+};
+
 module.exports = {
   name: 'وقت',
-  aliases: ['time', 'cooldowns', 'cd'],
+  aliases: ['اوقات', 'cooldowns', 'time'],
+  description: 'يعرض أوامر البنك وأوقات الانتظار لكل أمر',
   category: 'bank',
+
   execute: async (message) => {
     try {
+      const config = readConfig();
+      const cds = config?.cooldowns || {};
       const user = await getUser(message.author.id, message.guild.id);
-      const commands = [
-        { name: 'نرد', key: 'dice' },
-        { name: 'حظ', key: 'luck' },
-        { name: 'فواكه', key: 'fruits' },
-        { name: 'قمار', key: 'gamble' },
-        { name: 'تداول', key: 'trade' },
-        { name: 'بخشيش', key: 'tip' },
-        { name: 'سرقة', key: 'rob' },
-        { name: 'راتب', key: 'salary' },
-        { name: 'قرض', key: 'loan' }
-      ];
+      const keys = Object.keys(cds);
+      if (!keys.length) return message.reply('ℹ️ ما فيه أوقات انتظار محددة في الإعدادات.');
+
+      const lines = keys.map((k) => {
+        const c = checkCooldown(user, k);
+        const status = c.ready ? '✅ جاهز' : `⏳ ${c.remainingFormatted}`;
+        return `**${NAMES[k] || k}** — الانتظار: ${formatTime(cds[k])} — ${status}`;
+      });
       const embed = new EmbedBuilder()
-        .setColor('#00FFFF')
-        .setTitle('⏰ أوقات الانتظار')
-        .setDescription('هذه هي أوقات الانتظار للأوامر المختلفة:')
+        .setColor('#0099ff')
+        .setTitle('⏱️ أوقات الأوامر')
+        .setDescription(lines.join('\n'))
+        .setFooter({ text: message.author.username, iconURL: message.author.displayAvatarURL() })
         .setTimestamp();
-      for (const cmd of commands) {
-        const cooldown = checkCooldown(user, cmd.key);
-        let status;
-        if (cooldown.ready) {
-          status = '✅ جاهز';
-        } else {
-          status = `⏳ ${cooldown.remainingFormatted}`;
-        }
-        embed.addFields({
-          name: cmd.name,
-          value: status,
-          inline: true
-        });
-      }
-      await message.reply({ embeds: [embed] });
-    } catch (error) {
-      console.error('Error in time command:', error);
-      await message.reply('❌ حدث خطأ أثناء عرض الأوقات.');
+      return message.reply({ embeds: [embed] });
+    } catch (e) {
+      console.error('Error in time command:', e);
+      await message.reply(`❌ حدث خطأ.\n\`${String(e.message).slice(0, 150)}\``);
     }
-  }
+  },
 };

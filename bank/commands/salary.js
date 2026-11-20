@@ -1,61 +1,50 @@
-
-
-const { EmbedBuilder } = require('discord.js');
+// © 2026 Q3yb - Wick studio.
+const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const { getUser, checkCooldown, setCooldown, formatMoney, checkLevelUpAndJob, readConfig } = require('../utils/helpers');
-
-const DEFAULT_SALARY = 500; // يُستخدم إذا ما لقى راتب الوظيفة في الإعدادات
+const { createRewardCard } = require('../utils/rewardCard');
+const { randomXp, jobSalary } = require('../utils/rewards');
 
 module.exports = {
   name: 'راتب',
   aliases: ['salary', 'wage'],
+  description: 'استلام الراتب حسب وظيفتك',
   category: 'bank',
   execute: async (message) => {
     try {
       const config = readConfig();
-      if (!config || !config.economy || !config.economy.experience || !config.economy.experience.salary) {
-        return message.reply('❌ تعذر تحميل إعدادات الراتب من البنك.');
-      }
+      if (!config || !config.economy) return message.reply('❌ تعذر تحميل إعدادات البنك.');
       const user = await getUser(message.author.id, message.guild.id);
-      const cooldown = checkCooldown(user, 'salary');
-      if (!cooldown.ready) {
-        const embed = new EmbedBuilder()
-          .setColor('#FF0000')
-          .setDescription(`⏰ يجب الانتظار ${cooldown.remainingFormatted} لأخذ الراتب مرة أخرى.`);
-        return message.reply({ embeds: [embed] });
-      }
+      const cd = checkCooldown(user, 'salary');
+      if (!cd.ready) return message.reply(`⏰ يجب الانتظار ${cd.remainingFormatted} لأخذ الراتب مرة أخرى.`);
 
-      const jobs = config.economy.jobs || {};
-      const userJob = user.job || 'Unemployed';
-      let salaryAmount = Number(jobs[userJob]?.salary ?? jobs.Unemployed?.salary);
-      if (!Number.isFinite(salaryAmount)) {
-        console.warn(`[salary] ما لقيت راتب للوظيفة "${userJob}" في bank-config.json، استخدمت ${DEFAULT_SALARY}`);
-        salaryAmount = DEFAULT_SALARY;
-      }
-
-      user.balance += salaryAmount;
-      if (salaryAmount > user.stats.highestEarned) {
-        user.stats.highestEarned = salaryAmount;
-      }
-      const xpAward = config.economy.experience.salary.xpAward || 0;
-      user.experience += xpAward;
+      const salary = jobSalary(config, user.job);
+      const xp = randomXp(config, 'salary');
+      user.balance += salary;
+      if (salary > user.stats.highestEarned) user.stats.highestEarned = salary;
+      user.experience += xp;
       const leveledUp = await checkLevelUpAndJob(user, config);
       await setCooldown(user, 'salary');
       await user.save();
 
-      let description = `لقد تلقيت راتبك كـ **${user.job}** بقيمة ${formatMoney(salaryAmount)}!`;
-      if (leveledUp) {
-        description += `\n🎉 لقد وصلت إلى المستوى ${user.level} وحصلت على وظيفة **${user.job}** جديدة!`;
+      const text = `✨ كسبت ${xp} نقطة خبرة` + (leveledUp ? `\n🎉 وصلت للمستوى ${user.level} ووظيفتك الجديدة **${user.job}**` : '');
+      try {
+        const buf = await createRewardCard({
+          user, discordUser: message.author, guildOrId: message.guild,
+          amountText: `+${formatMoney(salary)}`,
+          subtitle: `تم إيداع الراتب ، الوظيفة (${user.job})`,
+          footer: `رصيدك الآن ${formatMoney(user.balance)}`,
+        });
+        return message.reply({ content: text, files: [new AttachmentBuilder(buf, { name: 'salary.png' })] });
+      } catch (e) {
+        console.error('salary card failed:', e.message);
+        const embed = new EmbedBuilder().setColor('#00FF00').setTitle('💰 راتب')
+          .setDescription(`تم إيداع الراتب ، الوظيفة (${user.job})\n${formatMoney(salary)}\n${text}`)
+          .addFields({ name: 'رصيدك الجديد', value: formatMoney(user.balance) });
+        return message.reply({ embeds: [embed] });
       }
-      const embed = new EmbedBuilder()
-        .setColor('#00FF00')
-        .setTitle('💰 راتب')
-        .setDescription(description)
-        .addFields({ name: 'رصيدك الجديد', value: formatMoney(user.balance), inline: false })
-        .setTimestamp();
-      await message.reply({ embeds: [embed] });
     } catch (error) {
       console.error('Error in salary command:', error);
       await message.reply(`❌ حدث خطأ أثناء محاولة أخذ الراتب.\n\`${String(error.message).slice(0, 150)}\``);
     }
-  }
+  },
 };

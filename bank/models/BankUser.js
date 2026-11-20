@@ -13,8 +13,9 @@ const defaults = () => ({
   loan: { amount: 0, takenAt: null },
   marriage: { partnerId: null, marriedAt: null },
   protection: { active: false, expiresAt: null },
-  stats: { highestEarned: 0, highestLost: 0, totalStolen: 0, totalRobbed: 0, totalInvested: 0 },
-  cooldowns: { dice: null, luck: null, fruits: null, gamble: null, trade: null, tip: null, rob: null, salary: null, loan: null },
+  stats: { highestEarned: 0, highestLost: 0, totalStolen: 0, totalRobbed: 0, totalInvested: 0, highestStolen: 0 },
+  investment: { principal: 0, profit: 0, totalInvested: 0, highestWin: 0, lastTick: null },
+  cooldowns: { dice: null, luck: null, fruits: null, gamble: null, trade: null, roulette: null, tip: null, rob: null, salary: null, loan: null },
   visaNumber: undefined,
   level: 1, experience: 0, job: 'Unemployed',
 });
@@ -51,6 +52,7 @@ function reviveDates(r) {
   if (r.loan) r.loan.takenAt = toDate(r.loan.takenAt);
   if (r.marriage) r.marriage.marriedAt = toDate(r.marriage.marriedAt);
   if (r.protection) r.protection.expiresAt = toDate(r.protection.expiresAt);
+  if (r.investment) r.investment.lastTick = toDate(r.investment.lastTick);
   if (r.cooldowns) for (const k of Object.keys(r.cooldowns)) r.cooldowns[k] = toDate(r.cooldowns[k]);
   (r.lands || []).forEach((l) => { l.lastCollected = toDate(l.lastCollected); });
   (r.tickets || []).forEach((t) => { t.issuedAt = toDate(t.issuedAt); t.paidAt = toDate(t.paidAt); });

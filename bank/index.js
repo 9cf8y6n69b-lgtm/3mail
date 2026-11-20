@@ -29,7 +29,8 @@ try {
         console.error(`Bank commands directory not found: ${commandsPath}`);
         fs.mkdirSync(commandsPath, { recursive: true });
     }
-    const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
+    const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))
+        .sort((a, b) => (a.startsWith('nova_') - b.startsWith('nova_')) || a.localeCompare(b)); // ملفات nova_ تتحمل آخر وتستبدل القديم
     for (const file of commandFiles) {
         try {
             const command = require(path.join(commandsPath, file));
@@ -116,6 +117,13 @@ async function handleBankInteraction(interaction) {
         } else if (customId.startsWith('hejolah_')) { 
             const c = bankCommands.get('هجولة'); 
             if (c?.handleInteraction) { await c.handleInteraction(interaction); handled = true; } 
+        } else if (customId.startsWith('invest_')) { 
+            const c = bankCommands.get('استثمار'); 
+            if (c?.handleInteraction) { await c.handleInteraction(interaction); handled = true; } 
+        } else if (customId.startsWith('nv_')) {
+            const key = customId.split('_')[1];
+            const c = [...bankCommands.values()].find(x => x.interactionKey === key);
+            if (c?.handleInteraction) { await c.handleInteraction(interaction); handled = true; }
         } else if (customId.startsWith('bankhelp_')) {
             handled = true;
         }

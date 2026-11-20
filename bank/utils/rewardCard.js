@@ -40,10 +40,10 @@ async function drawHeader(ctx, COLORS, guildOrId) {
  */
 async function createRewardCard(opts) {
   const { user, discordUser, guildOrId, amountText, subtitle, iconPath, footer } = opts;
-  const COLORS = await getActiveColors(guildOrId);
+  const COLORS = { ...(await getActiveColors(guildOrId)), ...(require('./preview').state.current?.colors || {}) };
   const amountColor = opts.amountColor || COLORS.green;
   const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext('2d');
+  const ctx = require('./cardKit').fixBidi(canvas.getContext('2d'));
 
   rr(ctx, PAD, PAD, W - PAD * 2, H - PAD * 2, RADIUS);
   ctx.save(); ctx.clip();

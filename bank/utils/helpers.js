@@ -279,7 +279,7 @@ function assignJobByLevel(user, config) {
   }
   const jobs = config.economy.jobs;
   let newJob = user.job;
-  let maxLevelJob = 'Unemployed';
+  let maxLevelJob = 'عاطل';
   for (const jobName in jobs) {
     if (jobs.hasOwnProperty(jobName)) {
       if (user.level >= jobs[jobName].levelRequired) {

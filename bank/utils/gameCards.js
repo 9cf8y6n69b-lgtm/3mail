@@ -2,6 +2,7 @@
 const { loadImage } = require('@napi-rs/canvas');
 const { newCard, finishCard, drawAvatar, rr, FONT } = require('./cardKit');
 const { formatMoney, getExpNeededForNextLevel } = require('./helpers');
+const { drawFruit, NAMES: FRUIT_NAMES } = require('./fruitArt');
 
 const EMOJI = (s) => `${s}px AppEmoji, AppFont, sans-serif`;
 const sign = (n) => (n >= 0 ? '+' : '-') + formatMoney(Math.abs(n));
@@ -17,7 +18,7 @@ function glow(ctx, color, blur, fn) { ctx.save(); ctx.shadowColor = color; ctx.s
 
 // ---------------- قمار ----------------
 async function createGambleCard({ discordUser, fruits, state, amount, change, guild }) {
-  // state: 'spin' | 'win' | 'lose' | 'push'
+  // fruits = أسماء فواكه من fruitArt | state: 'spin' | 'win' | 'lose' | 'push'
   const card = await newCard(900, 490, guild);
   const { ctx, COLORS } = card;
   await drawAvatar(ctx, discordUser, 190, 215, 70, COLORS);
@@ -29,17 +30,16 @@ async function createGambleCard({ discordUser, fruits, state, amount, change, gu
   fruits.forEach((f, i) => {
     const x = 352 + i * 160;
     box(ctx, x, 150, 150, 150, 22, COLORS, 'rgba(0,0,0,0.25)');
-    ctx.fillStyle = COLORS.text; emoji(ctx, f, x + 75, 250, 80);
+    drawFruit(ctx, f, x + 75, y0(225), 150);
   });
   const col = state === 'win' ? COLORS.green : state === 'lose' ? COLORS.red : COLORS.text;
   const label = { spin: 'جاري السحب...', win: 'مبروك فزت!', lose: 'حظ أوفر المرة الجاية', push: 'تعادل - رجعنا لك رهانك' }[state];
   ctx.textAlign = 'center'; ctx.fillStyle = col; ctx.font = FONT('bold', 32);
-  glow(ctx, col, state === 'win' ? 16 : 0, () => ctx.fillText(label, 600, 395));
-  if (state === 'win' || state === 'lose') {
-    ctx.font = FONT('bold', 30); ctx.fillText(sign(change), 600, 442);
-  }
+  glow(ctx, col, state === 'win' ? 16 : 0, () => ctx.fillText(label, 585, 395));
+  if (state === 'win' || state === 'lose') { ctx.font = FONT('bold', 30); ctx.fillText(sign(change), 585, 442); }
   return finishCard(card);
 }
+const y0 = (v) => v;
 
 // ---------------- نرد ----------------
 const PIPS = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]],
@@ -132,20 +132,31 @@ async function createTransferCard({ from, to, amount, balance, guild }) {
   return finishCard(card);
 }
 
-// ---------------- تظهر (حفظ أماكن الفواكه) ----------------
-async function createMemoryCard({ fruits, mode, round, rounds, guild }) {
-  const card = await newCard(640, 690, guild);
+// ---------------- فواكه (لعبة الذاكرة) ----------------
+// mode: show (الفواكه ظاهرة) | hide (مخفية) | reveal (النتيجة)
+async function createMemoryCard({ grid, mode, ask, picked, guild }) {
+  const card = await newCard(900, 610, guild);
   const { ctx, COLORS } = card;
-  ctx.textAlign = 'center'; ctx.fillStyle = COLORS.text; ctx.font = FONT('bold', 30);
-  ctx.fillText(mode === 'show' ? 'احفظ أماكن الفواكه' : 'وين راحت الفواكه؟', 320, 145);
-  ctx.fillStyle = COLORS.textMuted; ctx.font = FONT('', 20); ctx.fillText(`الجولة ${round} من ${rounds}`, 320, 178);
-  for (let i = 0; i < 9; i++) {
-    const x = 70 + (i % 3) * 170, y = 205 + Math.floor(i / 3) * 155;
-    box(ctx, x, y, 150, 135, 22, COLORS, 'rgba(0,0,0,0.25)');
+  ctx.textAlign = 'center'; ctx.fillStyle = COLORS.text; ctx.font = FONT('bold', 32);
+  if (mode === 'show') ctx.fillText('احفظ أماكن الفواكه ..', 450, 150);
+  else if (mode === 'hide') {
+    const t = `وين كان مكان ${FRUIT_NAMES[grid[ask]]} ؟`;
+    const w = ctx.measureText(t).width;
+    ctx.fillText(t, 450 - 40, 150);
+    drawFruit(ctx, grid[ask], 450 - 40 + w / 2 + 50, 140, 76);
+  } else {
+    const ok = picked === ask;
+    ctx.fillStyle = ok ? COLORS.green : COLORS.red; ctx.fillText(ok ? 'صح! حفظك قوي' : 'غلط! هذا مكانها', 450, 150);
+  }
+  for (let i = 0; i < 10; i++) {
+    const x = 47 + (i % 5) * 164, y = 195 + Math.floor(i / 5) * 164;
+    let fill = 'rgba(0,0,0,0.25)';
+    if (mode === 'reveal' && i === ask) fill = 'rgba(76,217,100,0.35)';
+    else if (mode === 'reveal' && i === picked) fill = 'rgba(255,92,92,0.35)';
+    box(ctx, x, y, 150, 150, 22, COLORS, fill);
     ctx.fillStyle = COLORS.textMuted; ctx.font = FONT('bold', 18); ctx.textAlign = 'left'; ctx.fillText(String(i + 1), x + 14, y + 28);
-    ctx.fillStyle = COLORS.text;
-    if (mode === 'show') emoji(ctx, fruits[i], x + 75, y + 95, 66);
-    else { ctx.textAlign = 'center'; ctx.font = FONT('bold', 60); ctx.fillStyle = COLORS.textMuted; ctx.fillText('؟', x + 75, y + 90); }
+    if (mode === 'hide') { ctx.textAlign = 'center'; ctx.font = FONT('bold', 70); ctx.fillStyle = COLORS.textMuted; ctx.fillText('؟', x + 75, y + 98); }
+    else drawFruit(ctx, grid[i], x + 75, y + 78, 150);
   }
   return finishCard(card);
 }
@@ -181,7 +192,7 @@ async function createProfileCard({ user, discordUser, guild }) {
   await drawAvatar(ctx, discordUser, 190, 195, 70, COLORS);
   ctx.textAlign = 'center'; ctx.fillStyle = COLORS.text; ctx.font = FONT('bold', 30); ctx.fillText(discordUser.username, 190, 310);
   rr(ctx, 100, 328, 180, 36, 18); ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fill();
-  ctx.fillStyle = COLORS.textMuted; ctx.font = FONT('bold', 19); ctx.fillText(user.job || 'Unemployed', 190, 353);
+  ctx.fillStyle = COLORS.textMuted; ctx.font = FONT('bold', 19); ctx.fillText(user.job || 'عاطل', 190, 353);
 
   const rows = [
     ['فلوسه', formatMoney(user.balance), COLORS.text],

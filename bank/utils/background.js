@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { getSettings } = require('./settings');
+const preview = require('./preview');
 
 const BG_PATH = path.join(__dirname, '..', 'data', 'background.jpg');
 let cache = { mtime: 0, img: null };
@@ -18,7 +19,8 @@ async function getBgImage() {
 
 // يرسم الخلفية داخل المنطقة المقصوصة ويرجع true لو استخدم صورة
 async function drawBackground(ctx, W, H, COLORS) {
-  if (getSettings().cardBackground === 'image') {
+  const mode = preview.state.current?.mode || getSettings().cardBackground;
+  if (mode === 'image') {
     const img = await getBgImage();
     if (img) {
       const s = Math.max(W / img.width, H / img.height);
@@ -38,7 +40,10 @@ async function drawBackground(ctx, W, H, COLORS) {
 async function saveBackgroundFromUrl(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error('تعذر تحميل الصورة');
-  const img = await loadImage(Buffer.from(await res.arrayBuffer()));
+  return saveBackgroundFromBuffer(Buffer.from(await res.arrayBuffer()));
+}
+async function saveBackgroundFromBuffer(buf) {
+  const img = await loadImage(buf);
   const W = 1200, H = 800, s = Math.max(W / img.width, H / img.height);
   const cv = createCanvas(W, H), x = cv.getContext('2d');
   x.drawImage(img, (W - img.width * s) / 2, (H - img.height * s) / 2, img.width * s, img.height * s);
@@ -46,4 +51,4 @@ async function saveBackgroundFromUrl(url) {
   fs.writeFileSync(BG_PATH, cv.toBuffer('image/jpeg', 85));
   cache = { mtime: 0, img: null };
 }
-module.exports = { BG_PATH, drawBackground, saveBackgroundFromUrl };
+module.exports = { BG_PATH, drawBackground, saveBackgroundFromUrl, saveBackgroundFromBuffer };

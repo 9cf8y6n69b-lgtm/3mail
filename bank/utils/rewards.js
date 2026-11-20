@@ -12,7 +12,7 @@ function randomXp(config, key) {
 
 function jobSalary(config, job) {
   const jobs = config?.economy?.jobs || {};
-  const s = Number(jobs[job || 'Unemployed']?.salary ?? jobs.Unemployed?.salary);
+  const s = Number(jobs[job || 'عاطل']?.salary ?? jobs['عاطل']?.salary);
   return Number.isFinite(s) ? s : 500;
 }
 

@@ -4,6 +4,7 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const CONFIG = require('./canvas-config');
 const { getActiveColors, getActiveBranding } = require('./canvas'); // يسجّل الخطوط أيضاً
 const { drawBackground } = require('./background');
+const preview = require('./preview');
 
 const PAD = 20, RADIUS = 35;
 const FONT = (w, s) => `${w} ${s}px AppFont, Arial, sans-serif`;
@@ -39,9 +40,10 @@ async function drawHeader(ctx, COLORS, guildOrId, W) {
 
 /** يرسم الخلفية + الإطار الداخلي + الهيدر ويرجع { canvas, ctx, COLORS, W, H } */
 async function newCard(W, H, guildOrId) {
-  const COLORS = await getActiveColors(guildOrId);
+  let COLORS = await getActiveColors(guildOrId);
+  if (preview.state.current?.colors) COLORS = { ...COLORS, ...preview.state.current.colors };
   const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext('2d');
+  const ctx = fixBidi(canvas.getContext('2d'));
   rr(ctx, PAD, PAD, W - PAD * 2, H - PAD * 2, RADIUS);
   ctx.save(); ctx.clip();
   const hasImage = await drawBackground(ctx, W, H, COLORS);
@@ -77,4 +79,17 @@ async function drawAvatar(ctx, discordUser, x, y, r, COLORS) {
   ctx.strokeStyle = COLORS.line; ctx.lineWidth = 2; ctx.stroke();
 }
 
-module.exports = { newCard, finishCard, drawAvatar, rr, FONT, CONFIG };
+
+// يمنع انعكاس الأرقام والمبالغ ($10K) داخل النص العربي
+const LRI = '\u2066', PDI = '\u2069';
+function fixBidi(ctx) {
+  const orig = ctx.fillText.bind(ctx);
+  ctx.fillText = (t, x, y, w) => {
+    t = String(t);
+    if (/[\u0600-\u06FF]/.test(t)) t = t.replace(/[+\-]?\$?\d[\d.,]*[A-Za-z]*%?|[A-Za-z][A-Za-z ]*[A-Za-z]/g, (m) => LRI + m + PDI);
+    return w === undefined ? orig(t, x, y) : orig(t, x, y, w);
+  };
+  return ctx;
+}
+
+module.exports = { fixBidi, newCard, finishCard, drawAvatar, rr, FONT, CONFIG };

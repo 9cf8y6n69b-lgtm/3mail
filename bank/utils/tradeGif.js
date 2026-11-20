@@ -41,7 +41,7 @@ async function createTradeGif({ discordUser, ticker, up, pct, amount, change }) 
   for (let f = 0; f < FRAMES + 1; f++) {
     const final = f === FRAMES;
     const vis = final ? POINTS : Math.max(2, Math.ceil(POINTS * (f + 1) / FRAMES));
-    const cv = createCanvas(W, H), x = cv.getContext('2d');
+    const cv = createCanvas(W, H), x = require('./cardKit').fixBidi(cv.getContext('2d'));
     x.fillStyle = C.bg; x.fillRect(0, 0, W, H);
     x.fillStyle = C.panel; x.beginPath(); x.roundRect(20, 70, 600, 250, 18); x.fill();
     x.strokeStyle = C.grid; x.lineWidth = 1;

@@ -49,7 +49,7 @@ try {
 }
 
 const { startPriceUpdater } = require('./utils/helpers');
-startPriceUpdater();
+try { if (!require('./utils/settings').getSettings().marketFrozen) startPriceUpdater(); } catch { startPriceUpdater(); }
 
 async function handleBankCommand(message, commandName, args) {
     setClient(message.client);
@@ -81,7 +81,13 @@ async function handleBankCommand(message, commandName, args) {
     } catch {}
 
     try {
+        const xpUtil = require('./utils/xp');
+        const before = await xpUtil.snapshot(message.author.id, message.guild.id).catch(() => null);
         await command.execute(message, args);
+        try {
+            const promo = await xpUtil.afterCommand(commandName, message.author.id, message.guild.id, before);
+            if (promo) await message.channel.send(promo).catch(() => {});
+        } catch (e) { console.error('xp:', e.message); }
         if (command.name === 'ادارة' || command.name === 'اعداد') { try { require('./utils/backup').requestBackup(message.client, 'أمر إدارة'); } catch {} }
         return true;
     } catch (err) {

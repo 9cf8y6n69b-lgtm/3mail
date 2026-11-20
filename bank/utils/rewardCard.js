@@ -48,9 +48,7 @@ async function createRewardCard(opts) {
   rr(ctx, PAD, PAD, W - PAD * 2, H - PAD * 2, RADIUS);
   ctx.save(); ctx.clip();
 
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, COLORS.bgTop); bg.addColorStop(1, COLORS.bgBottom);
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  await require('./background').drawBackground(ctx, W, H, COLORS);
 
   // لمعة قطرية
   ctx.save();

@@ -3,6 +3,7 @@ const path = require('path');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const CONFIG = require('./canvas-config');
 const { getActiveColors, getActiveBranding } = require('./canvas'); // يسجّل الخطوط أيضاً
+const { drawBackground } = require('./background');
 
 const PAD = 20, RADIUS = 35;
 const FONT = (w, s) => `${w} ${s}px AppFont, Arial, sans-serif`;
@@ -43,10 +44,9 @@ async function newCard(W, H, guildOrId) {
   const ctx = canvas.getContext('2d');
   rr(ctx, PAD, PAD, W - PAD * 2, H - PAD * 2, RADIUS);
   ctx.save(); ctx.clip();
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, COLORS.bgTop); bg.addColorStop(1, COLORS.bgBottom);
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  const hasImage = await drawBackground(ctx, W, H, COLORS);
   ctx.save();
+  ctx.globalAlpha = hasImage ? 0 : 1;
   ctx.beginPath(); ctx.moveTo(0, H * 0.7); ctx.lineTo(W, H * 0.2); ctx.lineTo(W, 0); ctx.lineTo(0, 0); ctx.closePath();
   const shine = ctx.createLinearGradient(0, 0, W, H);
   shine.addColorStop(0, 'rgba(255,255,255,0.10)'); shine.addColorStop(1, 'rgba(255,255,255,0)');

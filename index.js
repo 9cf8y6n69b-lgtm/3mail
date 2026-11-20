@@ -14,6 +14,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildVoiceStates,
   ],
 });
 
@@ -109,7 +110,6 @@ client.on('clientReady', () => {
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
-  console.log(`[recv] ${message.author.tag}: ${message.content.slice(0, 40)}`);
 
   const parts = message.content.trim().split(/ +/);
   const commandName = parts.shift()?.toLowerCase();
@@ -133,21 +133,9 @@ client.on('messageCreate', async (message) => {
     } catch (e) { return message.reply(`❌ فشل الاسترجاع: ${e.message}`); }
   }
 
-  // ---- فحص: يرد على ping بدون المرور على البنك ----
-  if (commandName === 'ping') {
-    return message.reply(`pong ✅ | channel: ${message.channel.id} | guild: ${message.guild?.id}`);
-  }
-
   if (typeof handleBankCommand === 'function' && commandName) {
     try {
-      const handled = await handleBankCommand(message, commandName, args);
-      console.log(`[msg] ch=${message.channel.id} "${commandName}" handled=${handled}`);
-      if (!handled) {
-        let chans = 'n/a';
-        try { chans = JSON.stringify(JSON.parse(fs.readFileSync(path.join(__dirname, 'bank/config/bank-config.json'), 'utf8')).adminSettings?.bankChannels); } catch (e) { chans = 'ERR ' + e.message; }
-        const keys = client.bankCommands ? [...client.bankCommands.keys()] : [];
-        console.log(`[debug] bankChannels=${chans} | has=${keys.includes(commandName)} | total=${keys.length} | sample=${JSON.stringify(keys.slice(0, 12))}`);
-      }
+      await handleBankCommand(message, commandName, args);
     } catch (error) { console.error('[Bank Command Error]:', error); }
   }
 });

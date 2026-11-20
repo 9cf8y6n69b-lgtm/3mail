@@ -1,12 +1,11 @@
 // © 2026 Q3yb - Wick studio.
 require('dotenv').config();
-const http = require('http');
 const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
 // Render يحتاج بورت مفتوح
-http.createServer((_, res) => res.end('ok')).listen(process.env.PORT || 3000);
+let webServer = null;
 
 const client = new Client({
   intents: [
@@ -17,6 +16,9 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
   ],
 });
+
+// الموقع يفتح فوراً (Render يحتاج بورت مفتوح)
+try { webServer = require('./bank/admin/web').start(client, () => applyStatus()); } catch (e) { console.error('web:', e); require('http').createServer((_, r) => r.end('ok')).listen(process.env.PORT || 3000); }
 
 let handleBankCommand = async () => false;
 let handleBankInteraction = async () => {};

@@ -1,7 +1,7 @@
 // © 2026 Q3yb - Wick studio.
 require('dotenv').config();
 const http = require('http');
-const { Client, GatewayIntentBits, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -53,96 +53,92 @@ const hasEventPermission = (member) => {
   return member.roles.cache.some((r) => s.eventRoles.map(String).includes(r.id));
 };
 
-// ================= النسخ الاحتياطي =================
+// ================= النسخ الاحتياطي + لوحة التحكم =================
 const OWNER_ID = process.env.OWNER_ID;
-// ملفات الإعدادات اللي تتعدل من أمر اعداد، تنحفظ مع النسخة
-const BACKUP_FILES = ['bank/config/bank-config.json', 'bank/config/cars-config.json', 'admin_settings.json',
-  'bank/data/auction.json', 'bank/data/harraj.json', 'bank/data/marketPrices.json'];
+let backup = null, dashboard = null, settingsUtil = null;
+try {
+  backup = require('./bank/utils/backup');
+  dashboard = require('./bank/admin/dashboard');
+  settingsUtil = require('./bank/utils/settings');
+} catch (e) { console.error('❌ Failed to load dashboard/backup:', e); }
 
-function buildBackup() {
-  const files = {};
-  for (const f of BACKUP_FILES) {
-    try { files[f] = fs.readFileSync(path.join(__dirname, f), 'utf8'); } catch {}
-  }
-  return JSON.stringify({ version: 1, createdAt: new Date().toISOString(), users: BankUser.__dump(), files });
-}
-function applyBackup(text) {
-  const data = JSON.parse(text);
-  if (!data || !Array.isArray(data.users)) throw new Error('ملف غير صالح');
-  const n = BankUser.__load(data.users);
-  for (const f of BACKUP_FILES) {
-    if (data.files && typeof data.files[f] === 'string') {
-      try { JSON.parse(data.files[f]); fs.writeFileSync(path.join(__dirname, f), data.files[f]); } catch {}
-    }
-  }
-  return n;
-}
-const backupAttachment = () =>
-  new AttachmentBuilder(Buffer.from(buildBackup()), { name: `backup-${new Date().toISOString().slice(0, 10)}.json` });
+const isOwner = (id) => !!OWNER_ID && id === OWNER_ID;
+const isAdminMember = (member) => !!member && (hasAdminPermission(member) || isOwner(member.id));
 
-async function sendBackupToOwner(reason) {
-  if (!OWNER_ID || !BankUser) return;
-  const owner = await client.users.fetch(OWNER_ID);
-  await owner.send({ content: `💾 نسخة احتياطية (${reason}) — ${BankUser.__count()} حساب`, files: [backupAttachment()] });
-}
-
-// يرجّع آخر نسخة من الخاص تلقائياً لو البيانات فاضية (بعد تحديث/إعادة تشغيل Render)
-async function autoRestore() {
-  if (!OWNER_ID || !BankUser || BankUser.__count() > 0) return;
+// حالة البوت من الإعدادات
+function applyStatus() {
+  const st = settingsUtil?.getSettings().status;
   try {
-    const dm = await (await client.users.fetch(OWNER_ID)).createDM();
-    const msgs = await dm.messages.fetch({ limit: 50 });
-    const m = msgs.find((x) => x.author.id === client.user.id && x.attachments.some((a) => a.name?.startsWith('backup-')));
-    if (!m) return console.log('ℹ️ ما لقيت نسخة سابقة في الخاص');
-    const att = m.attachments.find((a) => a.name?.startsWith('backup-'));
-    const n = applyBackup(await (await fetch(att.url)).text());
-    console.log(`✅ تم استرجاع آخر نسخة تلقائياً (${n} حساب)`);
-  } catch (e) { console.error('autoRestore failed:', e.message); }
+    if (st?.text) client.user.setPresence({ status: st.state || 'online', activities: [{ name: st.text, type: st.type ?? 0 }] });
+    else client.user.setPresence({ status: 'online', activities: [{ name: 'Wick Studio', type: 0 }] });
+  } catch (e) { console.error('status:', e.message); }
 }
 
-client.on('clientReady', () => {
+client.on('clientReady', async () => {
   console.log(`${client.user.username} is Online`);
-  client.user.setActivity('Wick Studio', { type: 0 });
-  autoRestore();
-  const hours = Number(process.env.AUTO_BACKUP_HOURS ?? 6);
-  if (hours > 0) setInterval(() => sendBackupToOwner('تلقائية').catch((e) => console.error('auto backup:', e.message)), hours * 3600000);
+  if (dashboard) {
+    dashboard.init({ client, isAdmin: isAdminMember, isOwner, applyStatus });
+    dashboard.registerCommands(client).catch((e) => console.error('slash register:', e.message));
+  }
+  applyStatus();
+  if (backup && BankUser) {
+    await backup.autoRestore(client);
+    applyStatus();
+    BankUser.__setOnChange(() => backup.onDataChange(client));
+    const hours = Number(process.env.AUTO_BACKUP_HOURS ?? 6);
+    if (hours > 0) setInterval(() => backup.sendBackup(client, 'تلقائية').catch((e) => console.error('auto backup:', e.message)), hours * 3600000);
+  }
 });
+client.on('guildCreate', () => { if (dashboard) dashboard.registerCommands(client).catch(() => {}); });
 
 client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
+  if (message.author.bot || !message.guild) return;
 
-  const parts = message.content.trim().split(/ +/);
+  // البريفكس (فاضي = بدون)
+  const prefix = settingsUtil?.getSettings().prefix || '';
+  let content = message.content.trim();
+  if (prefix) { if (!content.startsWith(prefix)) return; content = content.slice(prefix.length).trim(); }
+  const parts = content.split(/ +/);
   const commandName = parts.shift()?.toLowerCase();
   const args = parts;
+  if (!commandName) return;
+
+  // ---- لوحة التحكم (نص): لوحة ----
+  if (dashboard && ['لوحة', 'dashboard', 'داشبورد'].includes(commandName)) {
+    if (!isAdminMember(message.member)) return message.reply('❌ للإدارة فقط.');
+    try { return await message.reply(await dashboard.dashboardPayload(message.guild)); }
+    catch (e) { console.error(e); return message.reply(`❌ ${e.message}`); }
+  }
 
   // ---- أوامر المالك: نسخة / استرجاع ----
-  if (BankUser && ['!backup', 'backup', 'نسخة'].includes(commandName)) {
-    if (message.author.id !== OWNER_ID) return message.reply('❌ للمالك فقط.');
-    try {
-      await message.author.send({ content: `💾 نسخة كاملة — ${BankUser.__count()} حساب`, files: [backupAttachment()] });
-      return message.reply('✅ أرسلت لك النسخة في الخاص.');
-    } catch { return message.reply('❌ ما قدرت أرسل لك خاص، افتح الخاص من السيرفر وجرب مرة ثانية.'); }
+  if (backup && BankUser && ['!backup', 'backup', 'نسخة'].includes(commandName)) {
+    if (!isOwner(message.author.id)) return message.reply('❌ للمالك فقط.');
+    const ok = await backup.sendBackup(client, 'يدوية');
+    return message.reply(ok ? '✅ أرسلت النسخة.' : '❌ ما قدرت أرسل النسخة (تأكد إن الخاص مفتوح أو البوت يشوف الروم).');
   }
-  if (BankUser && ['!restore', 'restore', 'استرجاع'].includes(commandName)) {
-    if (message.author.id !== OWNER_ID) return message.reply('❌ للمالك فقط.');
+  if (backup && BankUser && ['!restore', 'restore', 'استرجاع'].includes(commandName)) {
+    if (!isOwner(message.author.id)) return message.reply('❌ للمالك فقط.');
     const att = message.attachments.first();
     if (!att) return message.reply('❌ أرفق ملف النسخة مع الأمر.');
     try {
-      const n = applyBackup(await (await fetch(att.url)).text());
-      return message.reply(`✅ تم الاسترجاع: ${n} حساب. (إذا غيّرت الإعدادات، أعد تشغيل البوت لتتحدث بالكامل)`);
+      const n = backup.applyBackup(await (await fetch(att.url)).text());
+      applyStatus();
+      return message.reply(`✅ تم الاسترجاع: ${n} حساب مع الإعدادات والخلفية.`);
     } catch (e) { return message.reply(`❌ فشل الاسترجاع: ${e.message}`); }
   }
 
-  if (typeof handleBankCommand === 'function' && commandName) {
-    try {
-      await handleBankCommand(message, commandName, args);
-    } catch (error) { console.error('[Bank Command Error]:', error); }
+  if (typeof handleBankCommand === 'function') {
+    try { await handleBankCommand(message, commandName, args); }
+    catch (error) { console.error('[Bank Command Error]:', error); }
   }
 });
 
 client.on('interactionCreate', async (interaction) => {
-  try { if (typeof handleBankInteraction === 'function') await handleBankInteraction(interaction); }
-  catch (error) { console.error('[Bank Interaction Error]:', error); }
+  try {
+    if (dashboard && interaction.isChatInputCommand()) return await dashboard.handleSlash(interaction);
+    if (dashboard && interaction.customId?.startsWith('dash_')) return await dashboard.handleComponent(interaction);
+    if (typeof handleBankInteraction === 'function') await handleBankInteraction(interaction);
+  } catch (error) { console.error('[Interaction Error]:', error); }
 });
 
 client.login(process.env.TOKEN).then(() => console.log('✅ Bot logged in successfully'))

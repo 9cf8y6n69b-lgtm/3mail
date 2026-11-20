@@ -18,7 +18,7 @@ const defaults = () => ({
   investment: { principal: 0, profit: 0, totalInvested: 0, highestWin: 0, lastTick: null },
   cooldowns: { dice: null, luck: null, fruits: null, gamble: null, trade: null, roulette: null, tip: null, rob: null, salary: null, loan: null },
   visaNumber: undefined,
-  level: 1, experience: 0, job: 'Unemployed',
+  level: 1, experience: 0, job: 'عاطل',
 });
 const subDefaults = {
   lands: () => ({ level: 1, lastCollected: new Date() }),

@@ -6,7 +6,7 @@ const {
 const BankUser = require('../models/BankUser');
 const { getUser, formatMoney, formatTime } = require('../utils/helpers');
 const { getSettings, updateSettings, updateConfig, readConfig, parseDuration } = require('../utils/settings');
-const { saveBackgroundFromUrl } = require('../utils/background');
+const { saveBackgroundFromUrl, saveBackgroundFromBuffer } = require('../utils/background');
 const backup = require('../utils/backup');
 
 const EPH = 64; // رسائل مخفية
@@ -147,6 +147,10 @@ const ops = {
     updateSettings({ status: { text, type: ACTIVITY[type] ?? 0, state: STATE[state] || 'online' } });
     ctx.applyStatus(); afterChange('تغيير حالة البوت'); return `✅ تم تغيير حالة البوت: ${text}`;
   },
+  async backgroundBuffer(buf) {
+    await saveBackgroundFromBuffer(buf); updateSettings({ cardBackground: 'image' }); afterChange('تغيير الخلفية');
+    return '✅ تم تعيين صورة الخلفية';
+  },
   async background({ imageUrl, top, bottom, reset }) {
     if (reset) { updateSettings({ cardBackground: 'colors', colorOverrides: {} }); afterChange('خلفية افتراضية'); return '✅ رجعت الخلفية الافتراضية'; }
     const patch = {};
@@ -283,4 +287,4 @@ async function handleComponent(i) {
   }
 }
 
-module.exports = { init, registerCommands, handleSlash, handleComponent, dashboardPayload, DEFS };
+module.exports = { ops, init, registerCommands, handleSlash, handleComponent, dashboardPayload, DEFS };
